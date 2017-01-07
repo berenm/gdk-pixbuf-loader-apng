@@ -1,0 +1,63 @@
+<?xml version="1.0"?>
+<mime-info xmlns='http://www.freedesktop.org/standards/shared-mime-info'>
+  <mime-type type="image/apng">
+    <magic priority="50">
+      <match type="string" offset="0" value="\x89PNG\r\n\x1a\n">
+        <match type="string" offset="33" value="\x00\x00\x00\x08acTL"/>
+      </match>
+    </magic>
+    <glob pattern="*.png"/>
+    <glob pattern="*.apng"/>
+    <comment>APNG image</comment>
+    <comment xml:lang="ar">صورة APNG</comment>
+    <comment xml:lang="az">APNG rəsmi</comment>
+    <comment xml:lang="be@latin">Vyjava APNG</comment>
+    <comment xml:lang="bg">Изображение — APNG</comment>
+    <comment xml:lang="ca">imatge APNG</comment>
+    <comment xml:lang="cs">obrázek APNG</comment>
+    <comment xml:lang="cy">Delwedd APNG</comment>
+    <comment xml:lang="da">APNG-billede</comment>
+    <comment xml:lang="de">APNG-Bild</comment>
+    <comment xml:lang="el">Εικόνα APNG</comment>
+    <comment xml:lang="en_GB">APNG image</comment>
+    <comment xml:lang="eo">APNG-bildo</comment>
+    <comment xml:lang="es">imagen APNG</comment>
+    <comment xml:lang="eu">APNG irudia</comment>
+    <comment xml:lang="fi">APNG-kuva</comment>
+    <comment xml:lang="fo">APNG mynd</comment>
+    <comment xml:lang="fr">image APNG</comment>
+    <comment xml:lang="ga">íomhá APNG</comment>
+    <comment xml:lang="gl">imaxe APNG</comment>
+    <comment xml:lang="he">תמונת APNG</comment>
+    <comment xml:lang="hr">APNG slika</comment>
+    <comment xml:lang="hu">APNG-kép</comment>
+    <comment xml:lang="ia">Imagine APNG</comment>
+    <comment xml:lang="id">Citra APNG</comment>
+    <comment xml:lang="it">Immagine APNG</comment>
+    <comment xml:lang="ja">APNG 画像</comment>
+    <comment xml:lang="kk">APNG суреті</comment>
+    <comment xml:lang="ko">APNG 그림</comment>
+    <comment xml:lang="lt">APNG paveikslėlis</comment>
+    <comment xml:lang="lv">APNG attēls</comment>
+    <comment xml:lang="ms">Imej APNG</comment>
+    <comment xml:lang="nb">APNG-bilde</comment>
+    <comment xml:lang="nl">APNG-afbeelding</comment>
+    <comment xml:lang="nn">APNG-bilete</comment>
+    <comment xml:lang="oc">imatge APNG</comment>
+    <comment xml:lang="pl">Obraz APNG</comment>
+    <comment xml:lang="pt">imagem APNG</comment>
+    <comment xml:lang="pt_BR">Imagem APNG</comment>
+    <comment xml:lang="ro">Imagine APNG</comment>
+    <comment xml:lang="ru">изображение APNG</comment>
+    <comment xml:lang="sk">Obrázok APNG</comment>
+    <comment xml:lang="sl">Slikovna datoteka APNG</comment>
+    <comment xml:lang="sq">Figurë APNG</comment>
+    <comment xml:lang="sr">ПНГ слика</comment>
+    <comment xml:lang="sv">APNG-bild</comment>
+    <comment xml:lang="tr">APNG görüntüsü</comment>
+    <comment xml:lang="uk">зображення APNG</comment>
+    <comment xml:lang="vi">Ảnh APNG</comment>
+    <comment xml:lang="zh_CN">APNG 图像</comment>
+    <comment xml:lang="zh_TW">APNG 影像</comment>
+  </mime-type>
+</mime-info>

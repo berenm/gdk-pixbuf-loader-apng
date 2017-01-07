@@ -24,6 +24,13 @@ INSTALL
 
   sudo cmake --build build --target install
 
+To install the additional MIME info useful to distinguish image/apng from
+image/png:
+
+.. code:: bash
+
+  xdg-mime install --novendor share/mime-info/apng.xml
+
 
 LICENSE
 -------------------------------------------------------------------------------
