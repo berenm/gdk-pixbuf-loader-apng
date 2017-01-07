@@ -1,3 +1,5 @@
+#include <math.h>
+#include <stdlib.h>
 #include <string.h>
 #include <zlib.h>
 
@@ -62,16 +64,129 @@ static gboolean gdk_pixbuf__apng_image_stop_load(gpointer context,
   return retval;
 }
 
+static gboolean apng_decompress_3(ApngContext* ctx, GdkPixbufApngFrame* frame,
+                                  const guchar* buf, guint size, int* zerr) {
+  uLongf dsize;
+
+  *zerr = Z_OK;
+  if (frame->buf == NULL) {
+    frame->buf  = gdk_pixbuf_get_pixels(frame->pixbuf);
+    frame->off  = 0;
+    frame->size = gdk_pixbuf_get_byte_length(frame->pixbuf);
+  }
+
+  dsize = frame->size - frame->off;
+  *zerr = uncompress(frame->buf + frame->off, &dsize, buf, size);
+  if (*zerr != Z_OK)
+    return FALSE;
+  frame->off += dsize;
+
+  gsize const height = frame->fctl.height;
+  gsize const width  = frame->fctl.width;
+
+  if (frame->off == height * (width + 1)) {
+    guint8*  index = (guint8*)frame->buf;
+    guint32* pixel = (guint32*)index;
+
+    for (gssize y = height - 1; y >= 0; --y) {
+      guint8 filter_type = index[y * (width + 1)];
+      g_assert(filter_type == 0);
+
+      for (gssize x = width - 1; x >= 0; --x)
+        pixel[y * width + x] = ctx->plte.rgba[index[y * (width + 1) + x + 1]];
+    }
+
+    frame->off = frame->size;
+  }
+
+  return TRUE;
+}
+
+static gboolean apng_decompress_6(ApngContext* ctx, GdkPixbufApngFrame* frame,
+                                  const guchar* buf, guint size, int* zerr) {
+  uLongf dsize;
+
+  gsize const height = frame->fctl.height;
+  gsize const width  = frame->fctl.width;
+
+  *zerr = Z_OK;
+  if (frame->buf == NULL) {
+    frame->size = height * (width * 4 + 1);
+    frame->buf  = g_malloc(frame->size);
+    frame->off  = 0;
+  }
+
+  dsize = frame->size - frame->off;
+  *zerr = uncompress(frame->buf + frame->off, &dsize, buf, size);
+  if (*zerr != Z_OK)
+    return FALSE;
+  frame->off += dsize;
+
+  if (frame->off == frame->size) {
+    guint8* buffer = (guint8*)frame->buf;
+    guint8* pixel  = (guint8*)gdk_pixbuf_get_pixels(frame->pixbuf);
+
+    for (gsize y = 0; y < height; ++y) {
+      guint8 filter_type = buffer[y * (width * 4 + 1)];
+      memcpy(&pixel[y * width * 4], &buffer[y * (width * 4 + 1) + 1],
+             width * 4);
+
+      gsize dx = ctx->anim->ihdr.bit_depth >= 8
+                     ? 4 * ctx->anim->ihdr.bit_depth / 8
+                     : 1;
+      gsize dy = width * dx;
+      if (filter_type == 0) {
+      } else if (filter_type == 1) {
+        for (gsize x = 0; x < dy; ++x) {
+          guint8 a = x > 3 ? pixel[y * dy + x - dx] : 0;
+          pixel[y * dy + x] += a;
+        }
+      } else if (filter_type == 2) {
+        for (gsize x = 0; x < dy; ++x) {
+          guint8 b = y > 0 ? pixel[y * dy + x - dy] : 0;
+          pixel[y * dy + x] += b;
+        }
+      } else if (filter_type == 3) {
+        for (gsize x = 0; x < dy; ++x) {
+          guint8 a = x > 3 ? pixel[y * dy + x - dx] : 0;
+          guint8 b = y > 0 ? pixel[y * dy + x - dy] : 0;
+          pixel[y * dy + x] += (a + b) / 2;
+        }
+      } else if (filter_type == 4) {
+        for (gsize x = 0; x < dy; ++x) {
+          guint8 a  = x > 3 ? pixel[y * dy + x - dx] : 0;
+          guint8 b  = y > 0 ? pixel[y * dy + x - dy] : 0;
+          guint8 c  = y > 0 && x > 3 ? pixel[y * dy + x - dx - dy] : 0;
+          gint   p  = a + b - c;
+          guint  pa = abs(p - a);
+          guint  pb = abs(p - b);
+          guint  pc = abs(p - c);
+          if (pa <= pb && pa <= pc)
+            pixel[y * dy + x] += a;
+          else if (pb <= pc)
+            pixel[y * dy + x] += b;
+          else
+            pixel[y * dy + x] += c;
+        }
+      } else {
+        g_assert(FALSE);
+      }
+    }
+
+    g_free(frame->buf);
+    frame->buf = NULL;
+  }
+
+  return TRUE;
+}
+
 static gboolean gdk_pixbuf__apng_image_load_increment(gpointer      context,
                                                       const guchar* buf,
                                                       guint         size,
                                                       GError**      error) {
   // printf("%s:%d (%s)\n", __FILE__, __LINE__, __func__);
-  int                 zerr  = Z_OK;
-  GdkPixbufApngFrame* frame = NULL;
-  GList*              link  = NULL;
-
-  ApngContext* ctx = context;
+  int          zerr = Z_OK;
+  ApngContext* ctx  = context;
 
   ctx->buf = g_realloc(ctx->buf, ctx->size + size);
   memcpy(ctx->buf + ctx->size, buf, size);
@@ -124,7 +239,7 @@ static gboolean gdk_pixbuf__apng_image_load_increment(gpointer      context,
         //   ctx->anim->ihdr.compression_method, ctx->anim->ihdr.filter_method,
         //   ctx->anim->ihdr.interlace_method);
         g_assert(ctx->anim->ihdr.bit_depth == 8);
-        g_assert(ctx->anim->ihdr.colour_type == 3);
+        // g_assert(ctx->anim->ihdr.colour_type == 3);
         g_assert(ctx->anim->ihdr.compression_method == 0);
         g_assert(ctx->anim->ihdr.filter_method == 0);
         g_assert(ctx->anim->ihdr.interlace_method == 0);
@@ -202,17 +317,13 @@ static gboolean gdk_pixbuf__apng_image_load_increment(gpointer      context,
 
         g_assert(ctx->frame == NULL);
 
-        ctx->frame = g_new(GdkPixbufApngFrame, 1);
+        ctx->frame = g_new0(GdkPixbufApngFrame, 1);
         if (ctx->frame == NULL) {
           g_set_error_literal(error, GDK_PIXBUF_ERROR,
                               GDK_PIXBUF_ERROR_INSUFFICIENT_MEMORY,
                               "Not enough memory to load a frame in APNG file");
           goto error;
         }
-
-        ctx->frame->pixbuf     = NULL;
-        ctx->frame->composited = NULL;
-        ctx->frame->revert     = NULL;
 
         memcpy(&ctx->frame->fctl, ctx->buf + offset, sizeof(ctx->frame->fctl));
         offset += sizeof(ctx->frame->fctl);
@@ -259,45 +370,26 @@ static gboolean gdk_pixbuf__apng_image_load_increment(gpointer      context,
           goto error;
         }
 
-        ctx->frame->buf  = gdk_pixbuf_get_pixels(ctx->frame->pixbuf);
-        ctx->frame->off  = 0;
-        ctx->frame->size = gdk_pixbuf_get_byte_length(ctx->frame->pixbuf);
-
       } else if (strncmp(chunk_type, "IDAT", 4) == 0) {
         g_assert(ctx->frame != NULL);
         g_assert(ctx->anim->frames == NULL);
         if (ctx->anim->ihdr.colour_type == 3)
           g_assert(ctx->plte.size > 0);
 
-        uLongf dest_size = ctx->frame->size - ctx->frame->off;
-        zerr = uncompress(ctx->frame->buf + ctx->frame->off, &dest_size,
-                          ctx->buf + offset, chunk_size);
-
-        if (zerr != Z_OK)
-          goto zerror;
-        ctx->frame->off += dest_size;
-        offset += chunk_size;
-
-        // g_assert(ctx->anim->ihdr.colour_type == 3);
+        g_assert(ctx->anim->ihdr.colour_type == 3 ||
+                 ctx->anim->ihdr.colour_type == 6);
         if (ctx->anim->ihdr.colour_type == 3) {
-          gsize const height = ctx->frame->fctl.height;
-          gsize const width  = ctx->frame->fctl.width;
-
-          if (ctx->frame->off == height * (width + 1)) {
-            guint8*  index = (guint8*)ctx->frame->buf;
-            guint32* pixel = (guint32*)index;
-
-            for (gssize y = height - 1; y >= 0; --y) {
-              guint8 filter_type = index[y * (width + 1)];
-              g_assert(filter_type == 0);
-
-              for (gssize x = width - 1; x >= 0; --x)
-                pixel[y * width + x] =
-                    ctx->plte.rgba[index[y * (width + 1) + x + 1]];
-            }
-
-            ctx->frame->off = ctx->frame->size;
-          }
+          if (apng_decompress_3(ctx, ctx->frame, ctx->buf + offset, chunk_size,
+                                &zerr) == TRUE)
+            offset += chunk_size;
+          else if (zerr != Z_OK)
+            goto zerror;
+        } else if (ctx->anim->ihdr.colour_type == 6) {
+          if (apng_decompress_6(ctx, ctx->frame, ctx->buf + offset, chunk_size,
+                                &zerr) == TRUE)
+            offset += chunk_size;
+          else if (zerr != Z_OK)
+            goto zerror;
         }
 
         if (ctx->frame->off == ctx->frame->size) {
@@ -337,37 +429,22 @@ static gboolean gdk_pixbuf__apng_image_load_increment(gpointer      context,
         memcpy(&sequence_number, ctx->buf + offset, sizeof(sequence_number));
         offset += sizeof(sequence_number);
         sequence_number = GUINT32_FROM_BE(sequence_number);
+        chunk_size -= sizeof(sequence_number);
 
-        uLongf dest_size = ctx->frame->size - ctx->frame->off;
-        zerr =
-            uncompress(ctx->frame->buf + ctx->frame->off, &dest_size,
-                       ctx->buf + offset, chunk_size - sizeof(sequence_number));
-
-        if (zerr != Z_OK)
-          goto zerror;
-        ctx->frame->off += dest_size;
-        offset += chunk_size - sizeof(sequence_number);
-
-        g_assert(ctx->anim->ihdr.colour_type == 3);
+        g_assert(ctx->anim->ihdr.colour_type == 3 ||
+                 ctx->anim->ihdr.colour_type == 6);
         if (ctx->anim->ihdr.colour_type == 3) {
-          gsize const height = ctx->frame->fctl.height;
-          gsize const width  = ctx->frame->fctl.width;
-
-          if (ctx->frame->off == height * (width + 1)) {
-            guint8*  index = (guint8*)ctx->frame->buf;
-            guint32* pixel = (guint32*)index;
-
-            for (gssize y = height - 1; y >= 0; --y) {
-              guint8 filter_type = index[y * (width + 1)];
-              g_assert(filter_type == 0);
-
-              for (gssize x = width - 1; x >= 0; --x)
-                pixel[y * width + x] =
-                    ctx->plte.rgba[index[y * (width + 1) + x + 1]];
-            }
-
-            ctx->frame->off = ctx->frame->size;
-          }
+          if (apng_decompress_3(ctx, ctx->frame, ctx->buf + offset, chunk_size,
+                                &zerr) == TRUE)
+            offset += chunk_size;
+          else if (zerr != Z_OK)
+            goto zerror;
+        } else if (ctx->anim->ihdr.colour_type == 6) {
+          if (apng_decompress_6(ctx, ctx->frame, ctx->buf + offset, chunk_size,
+                                &zerr) == TRUE)
+            offset += chunk_size;
+          else if (zerr != Z_OK)
+            goto zerror;
         }
 
         if (ctx->frame->off == ctx->frame->size) {
@@ -435,6 +512,7 @@ error:
     g_clear_object(&ctx->frame->revert);
   }
   g_free(ctx->frame);
+  ctx->frame = NULL;
 
   return FALSE;
 }
