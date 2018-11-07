@@ -5,8 +5,6 @@
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #undef GDK_PIXBUF_ENABLE_BACKEND
 
-enum { APNG_HEADER_MAGIC = GUINT64_TO_BE(0x89504e470d0a1a0a) };
-
 typedef struct __attribute__((packed)) {
   guint32 width;
   guint32 height;

@@ -200,7 +200,7 @@ static gboolean gdk_pixbuf__apng_image_load_increment(gpointer      context,
       memcpy(&apng_header, ctx->buf + offset, sizeof(apng_header));
       offset += sizeof(apng_header);
 
-      g_assert(apng_header == APNG_HEADER_MAGIC);
+      g_assert(apng_header == GUINT64_TO_BE(0x89504e470d0a1a0a));
     } else {
       g_assert(ctx->off >= 8);
 
